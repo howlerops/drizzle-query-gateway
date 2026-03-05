@@ -4,9 +4,19 @@ A policy-enforced, type-safe query proxy for [Drizzle ORM](https://orm.drizzle.t
 
 ## Install
 
+Add the `@howlerops` scope to your `.npmrc` (one-time setup):
+
+```bash
+echo "@howlerops:registry=https://npm.pkg.github.com" >> .npmrc
+```
+
+Then install:
+
 ```bash
 npm install @howlerops/drizzle-query-gateway
 ```
+
+The package is public — no auth token is required to install.
 
 ## Why
 
