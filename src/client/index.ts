@@ -32,11 +32,17 @@ export interface MutateOptions {
   data: Record<string, unknown>;
 }
 
+export interface UpsertOptions {
+  data: Record<string, unknown>;
+  onConflict?: string[];
+}
+
 export interface TableClient {
   findMany: (options?: FindManyOptions) => Promise<Record<string, unknown>[]>;
   findFirst: (options?: FindFirstOptions) => Promise<Record<string, unknown> | null>;
   count: (options?: CountOptions) => Promise<number>;
   create: (options: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>;
+  upsert: (options: UpsertOptions) => Promise<Record<string, unknown>>;
   update: (options: MutateOptions) => Promise<Record<string, unknown>[]>;
   delete: (options: { where: Record<string, unknown> }) => Promise<Record<string, unknown>[]>;
 }
@@ -99,6 +105,12 @@ function createTableClient(config: ClientConfig, tableName: string): TableClient
 
     async create(options: { data: Record<string, unknown> }) {
       const result = await gatewayFetch(config, tableName, 'create', options);
+      const rows = result as Record<string, unknown>[];
+      return rows[0];
+    },
+
+    async upsert(options: UpsertOptions) {
+      const result = await gatewayFetch(config, tableName, 'upsert', options);
       const rows = result as Record<string, unknown>[];
       return rows[0];
     },
@@ -181,5 +193,5 @@ export interface BatchQuery {
 }
 
 export interface BatchClient {
-  execute: (queries: BatchQuery[]) => Promise<{ data?: unknown; error?: string }[]>;
+  execute: (queries: BatchQuery[]) => Promise<{ data?: unknown; error?: string | null }[]>;
 }

@@ -40,7 +40,7 @@ export function validateShape(
   ctx: GatewayContext,
 ): string | null {
   // Check write permission for mutations
-  const isWrite = operation === 'create' || operation === 'update' || operation === 'delete';
+  const isWrite = operation === 'create' || operation === 'update' || operation === 'delete' || operation === 'upsert';
   if (isWrite && !policy.canWrite(ctx)) {
     return 'Write access denied';
   }

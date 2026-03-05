@@ -35,9 +35,16 @@ export {
   type FindFirstOptions,
   type CountOptions,
   type MutateOptions,
+  type UpsertOptions,
   type BatchClient,
   type BatchQuery,
 } from './client/index.js';
+
+// Query Builder (Supabase-style chainable API)
+export {
+  createQueryBuilder,
+  QueryBuilder,
+} from './client/query-builder.js';
 
 // Types
 export type {
@@ -48,6 +55,8 @@ export type {
   GatewayResponse,
   GatewayBatchResponse,
   GatewayError,
+  FilterOperator,
+  FilterValue,
   PolicyConfig,
   Policy,
   PolicyRegistry,

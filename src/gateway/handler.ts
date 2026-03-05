@@ -21,11 +21,13 @@ const payloadSchema = z.object({
     value: z.unknown(),
     direction: z.enum(['asc', 'desc']).optional(),
   }).optional(),
+  onConflict: z.array(z.string()).optional(),
+  single: z.boolean().optional(),
 });
 
 const gatewayRequestSchema = z.object({
   table: z.string().min(1),
-  operation: z.enum(['findMany', 'findFirst', 'create', 'update', 'delete', 'count']),
+  operation: z.enum(['findMany', 'findFirst', 'create', 'update', 'delete', 'count', 'upsert']),
   payload: payloadSchema,
 });
 
@@ -55,12 +57,12 @@ async function processQuery(
 
   const policy = policies[table];
   if (!policy) {
-    return { status: 403, body: { error: 'Table not exposed' } };
+    return { status: 403, body: { data: null, error: 'Table not exposed' } };
   }
 
   const violation = validateShape(payload, policy, operation, ctx);
   if (violation) {
-    return { status: 403, body: { error: violation } };
+    return { status: 403, body: { data: null, error: violation } };
   }
 
   const requiredFilters = policy.requiredFilters(ctx);
@@ -79,10 +81,12 @@ async function processQuery(
     orderBy: payload.orderBy,
     data: payload.data,
     cursor: payload.cursor as { column: string; value: unknown; direction?: 'asc' | 'desc' } | undefined,
+    onConflict: payload.onConflict,
+    single: payload.single,
   });
 
   if (operation === 'count') {
-    return { status: 200, body: { data: rawResult } };
+    return { status: 200, body: { data: rawResult, error: null } };
   }
 
   const result = projectColumns(
@@ -90,7 +94,13 @@ async function processQuery(
     policy.allowedColumns,
   );
 
-  return { status: 200, body: { data: result } };
+  // Single mode: return one row or null (like Supabase .single())
+  if (payload.single) {
+    const row = result[0] ?? null;
+    return { status: 200, body: { data: row, error: null } };
+  }
+
+  return { status: 200, body: { data: result, error: null } };
 }
 
 /**
@@ -109,6 +119,7 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
     const parsed = gatewayRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
+        data: null,
         error: 'Invalid request format',
         details: parsed.error.issues,
       });
@@ -117,7 +128,7 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
 
     const ctx = req.ctx as GatewayContext;
     if (!ctx) {
-      res.status(401).json({ error: 'Missing authentication context' });
+      res.status(401).json({ data: null, error: 'Missing authentication context' });
       return;
     }
 
@@ -127,7 +138,7 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
     } catch (err) {
       onError?.(err, req);
       const message = err instanceof Error ? err.message : 'Query execution failed';
-      res.status(500).json({ error: message });
+      res.status(500).json({ data: null, error: message });
     }
   });
 
@@ -136,6 +147,7 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
     const parsed = batchRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
+        data: null,
         error: 'Invalid batch request format',
         details: parsed.error.issues,
       });
@@ -144,6 +156,7 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
 
     if (parsed.data.queries.length > maxBatchSize) {
       res.status(400).json({
+        data: null,
         error: `Batch size exceeds maximum of ${maxBatchSize}`,
       });
       return;
@@ -151,7 +164,7 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
 
     const ctx = req.ctx as GatewayContext;
     if (!ctx) {
-      res.status(401).json({ error: 'Missing authentication context' });
+      res.status(401).json({ data: null, error: 'Missing authentication context' });
       return;
     }
 
@@ -163,7 +176,7 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
     } catch (err) {
       onError?.(err, req);
       const message = err instanceof Error ? err.message : 'Batch execution failed';
-      res.status(500).json({ error: message });
+      res.status(500).json({ data: null, error: message });
     }
   });
 

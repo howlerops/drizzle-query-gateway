@@ -217,6 +217,104 @@ describe('Gateway Handler', () => {
       });
     expect(res.status).toBe(200);
   });
+
+  it('should accept filter operators (gt, gte, lt, lte, neq, in, like, ilike)', async () => {
+    const res = await request(app)
+      .post('/api/gateway')
+      .send({
+        table: 'contacts',
+        operation: 'findMany',
+        payload: { where: { status: { neq: 'archived' } } },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBeDefined();
+  });
+
+  it('should accept in operator with array values', async () => {
+    const res = await request(app)
+      .post('/api/gateway')
+      .send({
+        table: 'contacts',
+        operation: 'findMany',
+        payload: { where: { status: { in: ['active', 'pending'] } } },
+      });
+    expect(res.status).toBe(200);
+  });
+
+  it('should accept like operator', async () => {
+    const res = await request(app)
+      .post('/api/gateway')
+      .send({
+        table: 'contacts',
+        operation: 'findMany',
+        payload: { where: { status: { like: '%act%' } } },
+      });
+    expect(res.status).toBe(200);
+  });
+
+  it('should accept upsert operation', async () => {
+    const res = await request(app)
+      .post('/api/gateway')
+      .send({
+        table: 'contacts',
+        operation: 'upsert',
+        payload: { data: { name: 'Alice', email: 'alice@test.com' } },
+      });
+    expect(res.status).toBe(200);
+  });
+
+  it('should reject upsert for unauthorized roles', async () => {
+    const viewerApp = express();
+    viewerApp.use(express.json());
+    viewerApp.use((req, _res, next) => {
+      req.ctx = { userId: 'user-2', tenantId: 'tenant-1', roles: ['viewer'] };
+      next();
+    });
+    viewerApp.use('/api/gateway', createGatewayHandler({ db: mockDb as any, policies }));
+
+    const res = await request(viewerApp)
+      .post('/api/gateway')
+      .send({
+        table: 'contacts',
+        operation: 'upsert',
+        payload: { data: { name: 'Test' } },
+      });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('Write access denied');
+  });
+
+  it('should return { data, error: null } on success', async () => {
+    const res = await request(app)
+      .post('/api/gateway')
+      .send({ table: 'contacts', operation: 'findMany', payload: {} });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('data');
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.error).toBeNull();
+  });
+
+  it('should return { data: null, error } on policy failure', async () => {
+    const res = await request(app)
+      .post('/api/gateway')
+      .send({ table: 'secret_table', operation: 'findMany', payload: {} });
+    expect(res.status).toBe(403);
+    expect(res.body.data).toBeNull();
+    expect(res.body.error).toBe('Table not exposed');
+  });
+
+  it('should return single row with single flag', async () => {
+    const res = await request(app)
+      .post('/api/gateway')
+      .send({
+        table: 'contacts',
+        operation: 'findMany',
+        payload: { where: { status: 'active' }, single: true },
+      });
+    expect(res.status).toBe(200);
+    // Should return a single object, not an array
+    expect(res.body.data).not.toBeNull();
+    expect(Array.isArray(res.body.data)).toBe(false);
+  });
 });
 
 describe('Gateway Batch Handler', () => {

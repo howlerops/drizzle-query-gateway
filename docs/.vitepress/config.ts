@@ -41,6 +41,7 @@ export default defineConfig({
           { text: 'Basic CRUD', link: '/examples/basic-crud' },
           { text: 'Multi-Tenant', link: '/examples/multi-tenant' },
           { text: 'Role-Based Access', link: '/examples/role-based-access' },
+          { text: 'Supabase Migration', link: '/examples/supabase-migration' },
         ],
       },
     ],

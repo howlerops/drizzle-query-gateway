@@ -144,6 +144,29 @@ describe('TableClient.create', () => {
   });
 });
 
+describe('TableClient.upsert', () => {
+  it('should POST upsert operation', async () => {
+    const mockFetch = createMockFetch([{ id: '1', name: 'Alice' }]);
+    const client = createGatewayClient({
+      baseUrl: 'http://localhost:3000/api/gateway',
+      getToken: () => 'token',
+      fetch: mockFetch,
+    });
+
+    const result = await client.contacts.upsert({
+      data: { name: 'Alice', email: 'alice@test.com' },
+      onConflict: ['email'],
+    });
+    expect(result).toEqual({ id: '1', name: 'Alice' });
+
+    const call = mockFetch.mock.calls[0];
+    const body = JSON.parse(call[1].body);
+    expect(body.operation).toBe('upsert');
+    expect(body.payload.data).toEqual({ name: 'Alice', email: 'alice@test.com' });
+    expect(body.payload.onConflict).toEqual(['email']);
+  });
+});
+
 describe('TableClient.update', () => {
   it('should POST update operation', async () => {
     const mockFetch = createMockFetch([{ id: '1', name: 'Updated' }]);

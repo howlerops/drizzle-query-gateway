@@ -7,21 +7,42 @@ export interface GatewayContext {
   roles: string[];
 }
 
+/** Supported filter operators (Supabase-compatible) */
+export type FilterOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'like' | 'ilike' | 'is';
+
+/** A filter value can be a plain value (shorthand for eq) or an operator object */
+export type FilterValue =
+  | unknown
+  | { eq: unknown }
+  | { neq: unknown }
+  | { gt: unknown }
+  | { gte: unknown }
+  | { lt: unknown }
+  | { lte: unknown }
+  | { in: unknown[] }
+  | { like: string }
+  | { ilike: string }
+  | { is: null };
+
 /** Operations the gateway supports */
-export type GatewayOperation = 'findMany' | 'findFirst' | 'create' | 'update' | 'delete' | 'count';
+export type GatewayOperation = 'findMany' | 'findFirst' | 'create' | 'update' | 'delete' | 'count' | 'upsert';
 
 /** Inbound request shape from the client */
 export interface GatewayRequest {
   table: string;
   operation: GatewayOperation;
   payload: {
-    where?: Record<string, unknown>;
+    where?: Record<string, FilterValue>;
     columns?: string[];
     limit?: number;
     offset?: number;
     orderBy?: { column: string; direction: 'asc' | 'desc' }[];
     data?: Record<string, unknown>;
     cursor?: { column: string; value: unknown; direction?: 'asc' | 'desc' };
+    /** For upsert: columns that determine conflict */
+    onConflict?: string[];
+    /** Return single row instead of array */
+    single?: boolean;
   };
 }
 
@@ -54,18 +75,17 @@ export type PolicyRegistry = Record<string, Policy>;
 /** Gateway response envelope */
 export interface GatewayResponse<T = unknown> {
   data: T;
-  meta?: {
-    count?: number;
-  };
+  error: null;
 }
 
 /** Batch response envelope */
 export interface GatewayBatchResponse {
-  results: { data?: unknown; error?: string }[];
+  results: { data?: unknown; error?: string | null }[];
 }
 
 /** Gateway error response */
 export interface GatewayError {
+  data: null;
   error: string;
   code?: string;
 }
