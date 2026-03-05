@@ -99,8 +99,47 @@ app.listen(3000, () => {
 
 ## 4. Query from the Frontend
 
+The gateway offers two client styles. Both hit the same server endpoint.
+
+### Option A: Chainable Query Builder (Supabase-style)
+
 ```ts
-// client-side
+import { createQueryBuilder } from 'drizzle-query-gateway';
+
+const gateway = createQueryBuilder({
+  baseUrl: 'http://localhost:3000/api/gateway',
+  getToken: () => localStorage.getItem('token')!,
+});
+
+// Select with filters — tenantId is injected server-side automatically
+const { data: contacts, error } = await gateway
+  .from('contacts')
+  .select('id, name, email')
+  .eq('status', 'active')
+  .order('created_at', { ascending: false })
+  .limit(50);
+
+// Single row
+const { data: contact } = await gateway
+  .from('contacts')
+  .select()
+  .eq('id', 'user-123')
+  .single();
+
+// Insert
+const { data: created } = await gateway
+  .from('contacts')
+  .insert({ name: 'Alice', email: 'alice@example.com', status: 'active' });
+
+// Upsert
+const { data: upserted } = await gateway
+  .from('contacts')
+  .upsert({ id: '123', name: 'Alice' }, { onConflict: 'id' });
+```
+
+### Option B: Object-Style Client
+
+```ts
 import { createGatewayClient } from 'drizzle-query-gateway/client';
 
 const gateway = createGatewayClient({
@@ -128,6 +167,12 @@ const total = await gateway.contacts.count({
 // create (requires editor role via canWrite)
 const created = await gateway.contacts.create({
   data: { name: 'Alice', email: 'alice@example.com', status: 'active' },
+});
+
+// upsert
+const upserted = await gateway.contacts.upsert({
+  data: { name: 'Alice', email: 'alice@example.com' },
+  onConflict: ['email'],
 });
 
 // batch — multiple queries in one request

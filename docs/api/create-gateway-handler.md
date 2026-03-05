@@ -54,23 +54,70 @@ Request body:
 ```ts
 {
   table: string;             // Table name (must be in policy registry)
-  operation: 'findMany' | 'findFirst' | 'create' | 'update' | 'delete' | 'count';
+  operation: 'findMany' | 'findFirst' | 'create' | 'update' | 'delete' | 'count' | 'upsert';
   payload: {
-    where?: Record<string, unknown>;    // Client filters
+    where?: Record<string, unknown>;    // Client filters (see Filter Operators below)
     columns?: string[];                  // Columns to return
     limit?: number;                      // Max 1000
     offset?: number;                     // For offset pagination
     orderBy?: { column: string; direction: 'asc' | 'desc' }[];
     cursor?: { column: string; value: unknown; direction?: 'asc' | 'desc' };
-    data?: Record<string, unknown>;      // For create/update
+    data?: Record<string, unknown>;      // For create/update/upsert
+    onConflict?: string[];               // Conflict columns for upsert
+    single?: boolean;                    // Return single object instead of array
   }
 }
 ```
 
 Response:
 ```ts
-{ data: object[] }  // Success
-{ error: string }   // Error
+{ data: object[], error: null }   // Success
+{ data: null, error: string }     // Error
+```
+
+#### Filter Operators
+
+The `where` object supports both plain values (equality shorthand) and operator objects:
+
+```ts
+// Plain value — equality
+{ "status": "active" }
+
+// Operator object
+{ "age": { "gte": 18 } }
+{ "name": { "ilike": "%alice%" } }
+{ "role": { "in": ["admin", "editor"] } }
+{ "deletedAt": { "is": null } }
+```
+
+Supported operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `like`, `ilike`, `is`.
+
+#### Upsert
+
+The `upsert` operation inserts a row or updates it if a conflict occurs on the specified columns:
+
+```ts
+{
+  "table": "contacts",
+  "operation": "upsert",
+  "payload": {
+    "data": { "id": "123", "name": "Alice", "email": "alice@test.com" },
+    "onConflict": ["id"]
+  }
+}
+```
+
+#### Single Row Result
+
+Set `single: true` to return a single object instead of an array:
+
+```ts
+{
+  "table": "contacts",
+  "operation": "findFirst",
+  "payload": { "where": { "id": "123" }, "single": true }
+}
+// Response: { "data": { "id": "123", ... }, "error": null }
 ```
 
 ### `POST /batch` — Batch Queries

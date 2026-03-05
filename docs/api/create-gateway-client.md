@@ -109,6 +109,37 @@ const deleted = await gateway.contacts.delete({
 // Returns: Record<string, unknown>[]
 ```
 
+#### `upsert(options)`
+
+Insert or update on conflict:
+
+```ts
+const upserted = await gateway.contacts.upsert({
+  data: { name: 'Alice', email: 'alice@example.com' },
+  onConflict: ['email'],
+});
+// Returns: Record<string, unknown>
+```
+
+### Filter Operators
+
+The `where` object supports operator filters beyond simple equality. Pass an object with the operator as the key:
+
+```ts
+const contacts = await gateway.contacts.findMany({
+  where: {
+    status: 'active',              // shorthand for { eq: 'active' }
+    age: { gte: 18 },             // greater than or equal
+    priority: { lt: 5 },          // less than
+    name: { ilike: '%alice%' },   // case-insensitive LIKE
+    role: { in: ['admin', 'editor'] },
+    deletedAt: { is: null },      // IS NULL
+  },
+});
+```
+
+Supported operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `like`, `ilike`, `is`.
+
 ### Batch Client
 
 The `batch` property provides batch query support:
@@ -121,6 +152,10 @@ const results = await gateway.batch.execute([
 ]);
 // Returns: Array<{ data?: unknown; error?: string }>
 ```
+
+::: tip Prefer the chainable API?
+If you prefer Supabase-style chaining (`.from('table').select().eq().limit()`), see [createQueryBuilder](/api/create-query-builder).
+:::
 
 ## Error Handling
 

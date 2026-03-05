@@ -32,6 +32,7 @@ export default defineConfig({
           { text: 'definePolicy', link: '/api/define-policy' },
           { text: 'createGatewayHandler', link: '/api/create-gateway-handler' },
           { text: 'createAuthMiddleware', link: '/api/create-auth-middleware' },
+          { text: 'createQueryBuilder', link: '/api/create-query-builder' },
           { text: 'createGatewayClient', link: '/api/create-gateway-client' },
         ],
       },
