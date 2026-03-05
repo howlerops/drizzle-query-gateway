@@ -213,3 +213,102 @@ describe('Error handling', () => {
     expect(call[1].headers['Authorization']).toBe('Bearer async-token');
   });
 });
+
+describe('TableClient.count', () => {
+  it('should POST count operation', async () => {
+    const mockFetch = createMockFetch([{ count: 42 }]);
+    const client = createGatewayClient({
+      baseUrl: 'http://localhost:3000/api/gateway',
+      getToken: () => 'token',
+      fetch: mockFetch,
+    });
+
+    const result = await client.contacts.count({ where: { status: 'active' } });
+    expect(result).toBe(42);
+  });
+
+  it('should return 0 for empty results', async () => {
+    const mockFetch = createMockFetch([]);
+    const client = createGatewayClient({
+      baseUrl: 'http://localhost:3000/api/gateway',
+      getToken: () => 'token',
+      fetch: mockFetch,
+    });
+
+    const result = await client.contacts.count();
+    expect(result).toBe(0);
+  });
+});
+
+describe('Batch client', () => {
+  it('should send batch queries to /batch endpoint', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        results: [
+          { data: [{ id: '1' }] },
+          { data: [{ id: '2' }] },
+        ],
+      }),
+    });
+
+    const client = createGatewayClient({
+      baseUrl: 'http://localhost:3000/api/gateway',
+      getToken: () => 'token',
+      fetch: mockFetch,
+    });
+
+    const results = await client.batch.execute([
+      { table: 'contacts', operation: 'findMany', payload: { where: { status: 'active' } } },
+      { table: 'accounts', operation: 'findMany', payload: {} },
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:3000/api/gateway/batch',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('should throw on batch failure', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: 'Batch failed' }),
+    });
+
+    const client = createGatewayClient({
+      baseUrl: 'http://localhost:3000/api/gateway',
+      getToken: () => 'token',
+      fetch: mockFetch,
+    });
+
+    await expect(client.batch.execute([
+      { table: 'contacts', operation: 'findMany', payload: {} },
+    ])).rejects.toThrow('Batch failed');
+  });
+});
+
+describe('Cursor pagination', () => {
+  it('should pass cursor in findMany payload', async () => {
+    const mockFetch = createMockFetch([{ id: '2', name: 'Bob' }]);
+    const client = createGatewayClient({
+      baseUrl: 'http://localhost:3000/api/gateway',
+      getToken: () => 'token',
+      fetch: mockFetch,
+    });
+
+    await client.contacts.findMany({
+      cursor: { column: 'id', value: 'cursor-value', direction: 'asc' },
+      limit: 10,
+    });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.payload.cursor).toEqual({
+      column: 'id',
+      value: 'cursor-value',
+      direction: 'asc',
+    });
+  });
+});

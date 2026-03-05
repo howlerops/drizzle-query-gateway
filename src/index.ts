@@ -21,6 +21,7 @@ export {
   executeQuery,
   buildWhereClause,
   buildColumnSelection,
+  applyCursor,
   type DrizzleDB,
 } from './gateway/executor.js';
 
@@ -32,7 +33,10 @@ export {
   type TableClient,
   type FindManyOptions,
   type FindFirstOptions,
+  type CountOptions,
   type MutateOptions,
+  type BatchClient,
+  type BatchQuery,
 } from './client/index.js';
 
 // Types
@@ -40,7 +44,9 @@ export type {
   GatewayContext,
   GatewayOperation,
   GatewayRequest,
+  GatewayBatchRequest,
   GatewayResponse,
+  GatewayBatchResponse,
   GatewayError,
   PolicyConfig,
   Policy,

@@ -1,4 +1,4 @@
-import type { GatewayOperation, GatewayResponse, PolicyRegistry } from '../types.js';
+import type { GatewayOperation, GatewayResponse, GatewayBatchResponse } from '../types.js';
 
 export interface ClientConfig {
   /** Base URL of the gateway endpoint (e.g. 'http://localhost:3000/api/gateway') */
@@ -15,11 +15,16 @@ export interface FindManyOptions {
   limit?: number;
   offset?: number;
   orderBy?: { column: string; direction: 'asc' | 'desc' }[];
+  cursor?: { column: string; value: unknown; direction?: 'asc' | 'desc' };
 }
 
 export interface FindFirstOptions {
   where?: Record<string, unknown>;
   columns?: string[];
+}
+
+export interface CountOptions {
+  where?: Record<string, unknown>;
 }
 
 export interface MutateOptions {
@@ -30,6 +35,7 @@ export interface MutateOptions {
 export interface TableClient {
   findMany: (options?: FindManyOptions) => Promise<Record<string, unknown>[]>;
   findFirst: (options?: FindFirstOptions) => Promise<Record<string, unknown> | null>;
+  count: (options?: CountOptions) => Promise<number>;
   create: (options: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>;
   update: (options: MutateOptions) => Promise<Record<string, unknown>[]>;
   delete: (options: { where: Record<string, unknown> }) => Promise<Record<string, unknown>[]>;
@@ -85,6 +91,12 @@ function createTableClient(config: ClientConfig, tableName: string): TableClient
       return rows[0] ?? null;
     },
 
+    async count(options: CountOptions = {}) {
+      const result = await gatewayFetch(config, tableName, 'count', options);
+      const rows = result as { count: number }[];
+      return rows[0]?.count ?? 0;
+    },
+
     async create(options: { data: Record<string, unknown> }) {
       const result = await gatewayFetch(config, tableName, 'create', options);
       const rows = result as Record<string, unknown>[];
@@ -114,11 +126,40 @@ function createTableClient(config: ClientConfig, tableName: string): TableClient
 export function createGatewayClient(
   config: ClientConfig,
   tableNames?: string[],
-): Record<string, TableClient> {
+): Record<string, TableClient> & { batch: BatchClient } {
   const cache = new Map<string, TableClient>();
 
-  return new Proxy({} as Record<string, TableClient>, {
+  const batchClient: BatchClient = {
+    async execute(queries) {
+      const fetchFn = config.fetch ?? globalThis.fetch;
+      const token = await config.getToken();
+
+      const response = await fetchFn(`${config.baseUrl}/batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ queries }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Batch request failed' }));
+        throw new GatewayClientError(
+          (error as { error?: string }).error ?? 'Batch request failed',
+          response.status,
+        );
+      }
+
+      const result = await response.json() as GatewayBatchResponse;
+      return result.results;
+    },
+  };
+
+  return new Proxy({} as Record<string, TableClient> & { batch: BatchClient }, {
     get(_target, prop: string) {
+      if (prop === 'batch') return batchClient;
+
       if (tableNames && !tableNames.includes(prop)) {
         throw new GatewayClientError(`Table '${prop}' is not exposed by the gateway`, 403);
       }
@@ -131,4 +172,14 @@ export function createGatewayClient(
       return client;
     },
   });
+}
+
+export interface BatchQuery {
+  table: string;
+  operation: GatewayOperation;
+  payload: object;
+}
+
+export interface BatchClient {
+  execute: (queries: BatchQuery[]) => Promise<{ data?: unknown; error?: string }[]>;
 }

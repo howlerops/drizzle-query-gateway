@@ -8,7 +8,7 @@ export interface GatewayContext {
 }
 
 /** Operations the gateway supports */
-export type GatewayOperation = 'findMany' | 'findFirst' | 'create' | 'update' | 'delete';
+export type GatewayOperation = 'findMany' | 'findFirst' | 'create' | 'update' | 'delete' | 'count';
 
 /** Inbound request shape from the client */
 export interface GatewayRequest {
@@ -21,7 +21,13 @@ export interface GatewayRequest {
     offset?: number;
     orderBy?: { column: string; direction: 'asc' | 'desc' }[];
     data?: Record<string, unknown>;
+    cursor?: { column: string; value: unknown; direction?: 'asc' | 'desc' };
   };
+}
+
+/** Batch request — multiple queries in one round-trip */
+export interface GatewayBatchRequest {
+  queries: GatewayRequest[];
 }
 
 /** Policy definition for a single table */
@@ -51,6 +57,11 @@ export interface GatewayResponse<T = unknown> {
   meta?: {
     count?: number;
   };
+}
+
+/** Batch response envelope */
+export interface GatewayBatchResponse {
+  results: { data?: unknown; error?: string }[];
 }
 
 /** Gateway error response */

@@ -4,39 +4,108 @@ import type { PolicyRegistry, GatewayContext } from '../types.js';
 import { validateShape, intersectColumns, projectColumns } from './policy.js';
 import { executeQuery, type DrizzleDB } from './executor.js';
 
+const orderBySchema = z.object({
+  column: z.string(),
+  direction: z.enum(['asc', 'desc']),
+});
+
+const payloadSchema = z.object({
+  where: z.record(z.unknown()).optional(),
+  columns: z.array(z.string()).optional(),
+  limit: z.number().int().positive().max(1000).optional(),
+  offset: z.number().int().nonnegative().optional(),
+  orderBy: z.array(orderBySchema).optional(),
+  data: z.record(z.unknown()).optional(),
+  cursor: z.object({
+    column: z.string(),
+    value: z.unknown(),
+    direction: z.enum(['asc', 'desc']).optional(),
+  }).optional(),
+});
+
 const gatewayRequestSchema = z.object({
   table: z.string().min(1),
-  operation: z.enum(['findMany', 'findFirst', 'create', 'update', 'delete']),
-  payload: z.object({
-    where: z.record(z.unknown()).optional(),
-    columns: z.array(z.string()).optional(),
-    limit: z.number().int().positive().max(1000).optional(),
-    offset: z.number().int().nonnegative().optional(),
-    orderBy: z.array(z.object({
-      column: z.string(),
-      direction: z.enum(['asc', 'desc']),
-    })).optional(),
-    data: z.record(z.unknown()).optional(),
-  }),
+  operation: z.enum(['findMany', 'findFirst', 'create', 'update', 'delete', 'count']),
+  payload: payloadSchema,
+});
+
+const batchRequestSchema = z.object({
+  queries: z.array(gatewayRequestSchema).min(1).max(10),
 });
 
 export interface GatewayHandlerConfig {
   db: DrizzleDB;
   policies: PolicyRegistry;
+  /** Called on every gateway error — useful for logging/monitoring */
+  onError?: (error: unknown, req: Request) => void;
+  /** Maximum queries in a batch request (default: 10) */
+  maxBatchSize?: number;
 }
 
 /**
- * Create the gateway router with a single POST endpoint.
+ * Process a single gateway query and return the result or error.
+ */
+async function processQuery(
+  db: DrizzleDB,
+  policies: PolicyRegistry,
+  query: z.infer<typeof gatewayRequestSchema>,
+  ctx: GatewayContext,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const { table, operation, payload } = query;
+
+  const policy = policies[table];
+  if (!policy) {
+    return { status: 403, body: { error: 'Table not exposed' } };
+  }
+
+  const violation = validateShape(payload, policy, operation, ctx);
+  if (violation) {
+    return { status: 403, body: { error: violation } };
+  }
+
+  const requiredFilters = policy.requiredFilters(ctx);
+  const mergedFilters = {
+    ...payload.where,
+    ...requiredFilters,
+  };
+
+  const columns = intersectColumns(payload.columns, policy.allowedColumns);
+
+  const rawResult = await executeQuery(db, policy, operation, {
+    where: mergedFilters,
+    columns,
+    limit: payload.limit,
+    offset: payload.offset,
+    orderBy: payload.orderBy,
+    data: payload.data,
+    cursor: payload.cursor as { column: string; value: unknown; direction?: 'asc' | 'desc' } | undefined,
+  });
+
+  if (operation === 'count') {
+    return { status: 200, body: { data: rawResult } };
+  }
+
+  const result = projectColumns(
+    rawResult as Record<string, unknown>[],
+    policy.allowedColumns,
+  );
+
+  return { status: 200, body: { data: result } };
+}
+
+/**
+ * Create the gateway router.
  *
- * Validates request shape → enforces policy → injects required filters →
- * executes via Drizzle → projects allowed columns → returns typed response.
+ * Provides two endpoints:
+ * - POST /          Single query
+ * - POST /batch     Multiple queries in one round-trip
  */
 export function createGatewayHandler(config: GatewayHandlerConfig): Router {
   const router = Router();
-  const { db, policies } = config;
+  const { db, policies, onError, maxBatchSize = 10 } = config;
 
+  // Single query endpoint
   router.post('/', async (req: Request, res: Response): Promise<void> => {
-    // 1. Validate request structure
     const parsed = gatewayRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
@@ -46,58 +115,54 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
       return;
     }
 
-    const { table, operation, payload } = parsed.data;
     const ctx = req.ctx as GatewayContext;
-
     if (!ctx) {
       res.status(401).json({ error: 'Missing authentication context' });
       return;
     }
 
-    // 2. Check if table is exposed
-    const policy = policies[table];
-    if (!policy) {
-      res.status(403).json({ error: 'Table not exposed' });
+    try {
+      const result = await processQuery(db, policies, parsed.data, ctx);
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      onError?.(err, req);
+      const message = err instanceof Error ? err.message : 'Query execution failed';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // Batch query endpoint
+  router.post('/batch', async (req: Request, res: Response): Promise<void> => {
+    const parsed = batchRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'Invalid batch request format',
+        details: parsed.error.issues,
+      });
       return;
     }
 
-    // 3. Validate shape against policy
-    const violation = validateShape(payload, policy, operation, ctx);
-    if (violation) {
-      res.status(403).json({ error: violation });
+    if (parsed.data.queries.length > maxBatchSize) {
+      res.status(400).json({
+        error: `Batch size exceeds maximum of ${maxBatchSize}`,
+      });
       return;
     }
 
-    // 4. Inject required filters — server-built, cannot be overridden
-    const requiredFilters = policy.requiredFilters(ctx);
-    const mergedFilters = {
-      ...payload.where,
-      ...requiredFilters, // Required filters ALWAYS win — spread last
-    };
-
-    // 5. Compute column projection
-    const columns = intersectColumns(payload.columns, policy.allowedColumns);
+    const ctx = req.ctx as GatewayContext;
+    if (!ctx) {
+      res.status(401).json({ error: 'Missing authentication context' });
+      return;
+    }
 
     try {
-      // 6. Execute via Drizzle
-      const rawResult = await executeQuery(db, policy, operation, {
-        where: mergedFilters,
-        columns,
-        limit: payload.limit,
-        offset: payload.offset,
-        orderBy: payload.orderBy,
-        data: payload.data,
-      });
-
-      // 7. Project columns server-side (defense in depth)
-      const result = projectColumns(
-        rawResult as Record<string, unknown>[],
-        policy.allowedColumns,
+      const results = await Promise.all(
+        parsed.data.queries.map(query => processQuery(db, policies, query, ctx)),
       );
-
-      res.json({ data: result });
+      res.json({ results: results.map(r => r.body) });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Query execution failed';
+      onError?.(err, req);
+      const message = err instanceof Error ? err.message : 'Batch execution failed';
       res.status(500).json({ error: message });
     }
   });

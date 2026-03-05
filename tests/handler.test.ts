@@ -195,4 +195,115 @@ describe('Gateway Handler', () => {
     expect(res.status).toBe(403);
     expect(res.body.error).toContain('Disallowed filters');
   });
+
+  it('should support count operation', async () => {
+    const res = await request(app)
+      .post('/api/gateway')
+      .send({ table: 'contacts', operation: 'count', payload: {} });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBeDefined();
+  });
+
+  it('should accept cursor-based pagination', async () => {
+    const res = await request(app)
+      .post('/api/gateway')
+      .send({
+        table: 'contacts',
+        operation: 'findMany',
+        payload: {
+          cursor: { column: 'id', value: 'some-id', direction: 'asc' },
+          limit: 10,
+        },
+      });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('Gateway Batch Handler', () => {
+  let app: express.Express;
+  let mockDb: ReturnType<typeof createMockDb>;
+  let policies: PolicyRegistry;
+
+  beforeEach(() => {
+    mockDb = createMockDb();
+
+    const contactsPolicy = definePolicy({
+      table: contacts,
+      requiredFilters: (ctx) => ({ tenantId: ctx.tenantId }),
+      allowedFilters: ['status', 'ownerId', 'createdAt'],
+      allowedColumns: ['id', 'name', 'email', 'status'],
+      canWrite: (ctx) => ctx.roles.includes('editor'),
+    });
+
+    policies = createPolicyRegistry([contactsPolicy]);
+
+    app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.ctx = { userId: 'user-1', tenantId: 'tenant-1', roles: ['editor'] };
+      next();
+    });
+    app.use('/api/gateway', createGatewayHandler({ db: mockDb as any, policies }));
+  });
+
+  it('should execute batch queries', async () => {
+    const res = await request(app)
+      .post('/api/gateway/batch')
+      .send({
+        queries: [
+          { table: 'contacts', operation: 'findMany', payload: { where: { status: 'active' } } },
+          { table: 'contacts', operation: 'findMany', payload: { limit: 5 } },
+        ],
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.results).toHaveLength(2);
+    expect(res.body.results[0].data).toBeDefined();
+    expect(res.body.results[1].data).toBeDefined();
+  });
+
+  it('should reject invalid batch format', async () => {
+    const res = await request(app)
+      .post('/api/gateway/batch')
+      .send({ queries: 'not-an-array' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid batch request format');
+  });
+
+  it('should return policy errors per-query in batch', async () => {
+    const res = await request(app)
+      .post('/api/gateway/batch')
+      .send({
+        queries: [
+          { table: 'contacts', operation: 'findMany', payload: {} },
+          { table: 'secret_table', operation: 'findMany', payload: {} },
+        ],
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.results[0].data).toBeDefined();
+    expect(res.body.results[1].error).toBe('Table not exposed');
+  });
+
+  it('should call onError callback on failure', async () => {
+    const onError = vi.fn();
+    const errorDb = {
+      select: () => { throw new Error('DB connection lost'); },
+      insert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    };
+
+    const errorApp = express();
+    errorApp.use(express.json());
+    errorApp.use((req, _res, next) => {
+      req.ctx = { userId: 'u1', tenantId: 't1', roles: [] };
+      next();
+    });
+    errorApp.use('/api/gateway', createGatewayHandler({ db: errorDb as any, policies, onError }));
+
+    const res = await request(errorApp)
+      .post('/api/gateway')
+      .send({ table: 'contacts', operation: 'findMany', payload: {} });
+    expect(res.status).toBe(500);
+    expect(onError).toHaveBeenCalled();
+  });
 });
