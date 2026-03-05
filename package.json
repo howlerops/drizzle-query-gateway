@@ -1,10 +1,22 @@
 {
-  "name": "drizzle-query-gateway",
+  "name": "@howlerops/drizzle-query-gateway",
   "version": "0.1.0",
   "description": "A policy-enforced, type-safe query proxy for Drizzle ORM",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/howlerops/drizzle-query-gateway.git"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
