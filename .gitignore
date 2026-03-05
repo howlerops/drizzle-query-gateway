@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.howler-agents/
+.claude/memory.db
+.claude/ralph-loop.local.md

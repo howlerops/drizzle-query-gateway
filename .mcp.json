@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "howler-agents": {
+      "command": "npx",
+      "args": [
+        "howler-agents@latest",
+        "serve",
+        "--transport",
+        "stdio"
+      ]
+    }
+  }
+}
