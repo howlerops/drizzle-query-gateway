@@ -25,6 +25,25 @@ export {
   type DrizzleDB,
 } from './gateway/executor.js';
 
+// Auto-policy (schema-driven)
+export {
+  definePolicyFromSchema,
+  definePoliciesFromSchema,
+  type AutoPolicyOverrides,
+} from './gateway/auto-policy.js';
+
+// Relations
+export {
+  defineRelations,
+  createRelationsRegistry,
+  getTableRelations,
+  type RelationType,
+  type RelationConfig,
+  type ResolvedRelation,
+  type TableRelations,
+  type RelationsRegistry,
+} from './gateway/relations.js';
+
 // Client
 export {
   createGatewayClient,
@@ -40,7 +59,7 @@ export {
   type BatchQuery,
 } from './client/index.js';
 
-// Query Builder (Supabase-style chainable API)
+// Query Builder (chainable API)
 export {
   createQueryBuilder,
   QueryBuilder,
@@ -60,6 +79,7 @@ export type {
   PolicyConfig,
   Policy,
   PolicyRegistry,
+  IncludeOption,
 } from './types.js';
 
 // Schema (example)

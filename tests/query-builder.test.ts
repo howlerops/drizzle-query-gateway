@@ -15,7 +15,7 @@ const mockConfig = {
   getToken: () => 'test-token',
 };
 
-describe('QueryBuilder - Supabase-style API', () => {
+describe('QueryBuilder - Chainable API', () => {
   describe('.from().select()', () => {
     it('should build a basic select query', async () => {
       const mockFetch = createMockFetch([{ id: '1', name: 'Alice' }]);
@@ -346,8 +346,8 @@ describe('QueryBuilder - Supabase-style API', () => {
     });
   });
 
-  describe('Full chaining example (Supabase parity)', () => {
-    it('should support full Supabase-style chain', async () => {
+  describe('Full chaining example', () => {
+    it('should support full query chain', async () => {
       const mockFetch = createMockFetch([
         { id: '1', name: 'Alice', email: 'alice@test.com', status: 'active' },
       ]);
