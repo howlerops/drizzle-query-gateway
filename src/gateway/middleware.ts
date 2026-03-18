@@ -1,6 +1,5 @@
-import type { Request, Response, NextFunction } from 'express';
-import { jwtVerify, type JWTPayload } from 'jose';
-import type { GatewayContext } from '../types.js';
+import type { NextFunction, Request, Response } from "express";
+import { type JWTPayload, jwtVerify } from "jose";
 
 export interface AuthConfig {
   /** JWT secret key (as Uint8Array or string) */
@@ -11,7 +10,7 @@ export interface AuthConfig {
 
 function defaultExtractToken(req: Request): string | null {
   const auth = req.headers.authorization;
-  if (!auth?.startsWith('Bearer ')) return null;
+  if (!auth?.startsWith("Bearer ")) return null;
   return auth.slice(7);
 }
 
@@ -26,24 +25,33 @@ interface GatewayJWTPayload extends JWTPayload {
  * builds the GatewayContext attached to each request.
  */
 export function createAuthMiddleware(config: AuthConfig) {
-  const secret = typeof config.secret === 'string'
-    ? new TextEncoder().encode(config.secret)
-    : config.secret;
+  const secret =
+    typeof config.secret === "string"
+      ? new TextEncoder().encode(config.secret)
+      : config.secret;
 
   const extractToken = config.extractToken ?? defaultExtractToken;
 
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     const token = extractToken(req);
     if (!token) {
-      res.status(401).json({ error: 'Missing authentication token' });
+      res.status(401).json({ error: "Missing authentication token" });
       return;
     }
 
     try {
-      const { payload } = await jwtVerify(token, secret) as { payload: GatewayJWTPayload };
+      const { payload } = (await jwtVerify(token, secret)) as {
+        payload: GatewayJWTPayload;
+      };
 
       if (!payload.userId || !payload.tenantId) {
-        res.status(401).json({ error: 'Invalid token: missing userId or tenantId' });
+        res
+          .status(401)
+          .json({ error: "Invalid token: missing userId or tenantId" });
         return;
       }
 
@@ -55,7 +63,7 @@ export function createAuthMiddleware(config: AuthConfig) {
 
       next();
     } catch {
-      res.status(401).json({ error: 'Invalid or expired token' });
+      res.status(401).json({ error: "Invalid or expired token" });
     }
   };
 }

@@ -1,45 +1,49 @@
-name: Publish to GitHub Packages
+name: Publish to npm
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'tsconfig.json'
+    tags:
+      - 'v*'
 
-concurrency:
-  group: publish
-  cancel-in-progress: false
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: '@howlerops'
+          registry-url: https://registry.npmjs.org
+
+      - name: Upgrade npm for provenance support
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
         run: npm test
 
       - name: Build
         run: npm run build
 
+      - name: Set version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Publishing version: $VERSION"
+          npm version "$VERSION" --no-git-tag-version
+
       - name: Publish
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm publish --provenance --access public

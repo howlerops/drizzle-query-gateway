@@ -1,32 +1,61 @@
 import {
-  eq, ne, gt, gte, lt, lte, and, asc, desc,
-  like, ilike, inArray, isNull,
+  and,
+  asc,
+  desc,
   count as drizzleCount,
-  type SQL, type Table, getTableColumns,
-} from 'drizzle-orm';
-import type { PgTable } from 'drizzle-orm/pg-core';
-import type { Policy, FilterValue } from '../types.js';
+  eq,
+  getTableColumns,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  like,
+  lt,
+  lte,
+  ne,
+  type SQL,
+  type Table,
+} from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
+import type { FilterValue, Policy } from "../types.js";
 
 export interface QueryParams {
   where: Record<string, FilterValue>;
   columns: string[];
   limit?: number;
   offset?: number;
-  orderBy?: { column: string; direction: 'asc' | 'desc' }[];
+  orderBy?: { column: string; direction: "asc" | "desc" }[];
   data?: Record<string, unknown>;
-  cursor?: { column: string; value: unknown; direction?: 'asc' | 'desc' };
+  cursor?: { column: string; value: unknown; direction?: "asc" | "desc" };
   onConflict?: string[];
   single?: boolean;
 }
 
 /** Known filter operator keys */
-const FILTER_OPS = new Set(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'like', 'ilike', 'is']);
+const FILTER_OPS = new Set([
+  "eq",
+  "neq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "in",
+  "like",
+  "ilike",
+  "is",
+]);
 
 /**
  * Check if a filter value uses an operator object like { gt: 5 }.
  */
 function isOperatorFilter(value: unknown): value is Record<string, unknown> {
-  if (value === null || value === undefined || typeof value !== 'object' || Array.isArray(value)) {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
     return false;
   }
   const keys = Object.keys(value as Record<string, unknown>);
@@ -37,7 +66,10 @@ function isOperatorFilter(value: unknown): value is Record<string, unknown> {
  * Build a single filter condition from a column and value.
  * Supports both plain values (eq shorthand) and operator objects.
  */
-function buildFilterCondition(column: any, value: FilterValue): SQL | undefined {
+function buildFilterCondition(
+  column: any,
+  value: FilterValue,
+): SQL | undefined {
   if (value === undefined) return undefined;
 
   if (!isOperatorFilter(value)) {
@@ -51,17 +83,28 @@ function buildFilterCondition(column: any, value: FilterValue): SQL | undefined 
   const operand = obj[op];
 
   switch (op) {
-    case 'eq': return operand === null ? isNull(column) : eq(column, operand);
-    case 'neq': return ne(column, operand);
-    case 'gt': return gt(column, operand);
-    case 'gte': return gte(column, operand);
-    case 'lt': return lt(column, operand);
-    case 'lte': return lte(column, operand);
-    case 'in': return inArray(column, operand as unknown[]);
-    case 'like': return like(column, operand as string);
-    case 'ilike': return ilike(column, operand as string);
-    case 'is': return isNull(column);
-    default: return eq(column, value);
+    case "eq":
+      return operand === null ? isNull(column) : eq(column, operand);
+    case "neq":
+      return ne(column, operand);
+    case "gt":
+      return gt(column, operand);
+    case "gte":
+      return gte(column, operand);
+    case "lt":
+      return lt(column, operand);
+    case "lte":
+      return lte(column, operand);
+    case "in":
+      return inArray(column, operand as unknown[]);
+    case "like":
+      return like(column, operand as string);
+    case "ilike":
+      return ilike(column, operand as string);
+    case "is":
+      return isNull(column);
+    default:
+      return eq(column, value);
   }
 }
 
@@ -113,7 +156,7 @@ export function buildColumnSelection(
  */
 export function buildOrderBy(
   table: Table,
-  orderBy?: { column: string; direction: 'asc' | 'desc' }[],
+  orderBy?: { column: string; direction: "asc" | "desc" }[],
 ): SQL[] {
   if (!orderBy || orderBy.length === 0) return [];
 
@@ -123,7 +166,7 @@ export function buildOrderBy(
   for (const { column, direction } of orderBy) {
     const col = columns[column];
     if (col) {
-      clauses.push(direction === 'desc' ? desc(col) : asc(col));
+      clauses.push(direction === "desc" ? desc(col) : asc(col));
     }
   }
 
@@ -136,15 +179,14 @@ export function buildOrderBy(
 export function applyCursor(
   table: Table,
   existingWhere: SQL | undefined,
-  cursor: { column: string; value: unknown; direction?: 'asc' | 'desc' },
+  cursor: { column: string; value: unknown; direction?: "asc" | "desc" },
 ): SQL | undefined {
   const columns = getTableColumns(table);
   const col = columns[cursor.column];
   if (!col) return existingWhere;
 
-  const cursorCondition = cursor.direction === 'desc'
-    ? lt(col, cursor.value)
-    : gt(col, cursor.value);
+  const cursorCondition =
+    cursor.direction === "desc" ? lt(col, cursor.value) : gt(col, cursor.value);
 
   if (!existingWhere) return cursorCondition;
   return and(existingWhere, cursorCondition);
@@ -176,7 +218,7 @@ export async function executeQuery(
   }
 
   switch (operation) {
-    case 'findMany': {
+    case "findMany": {
       let query = db.select(columnSelection).from(table as PgTable);
       if (whereClause) query = query.where(whereClause);
       const orderClauses = buildOrderBy(table, params.orderBy);
@@ -186,7 +228,7 @@ export async function executeQuery(
       return await query;
     }
 
-    case 'findFirst': {
+    case "findFirst": {
       let query = db.select(columnSelection).from(table as PgTable);
       if (whereClause) query = query.where(whereClause);
       query = query.limit(1);
@@ -194,28 +236,29 @@ export async function executeQuery(
       return rows.slice(0, 1);
     }
 
-    case 'count': {
+    case "count": {
       let query = db.select({ count: drizzleCount() }).from(table as PgTable);
       if (whereClause) query = query.where(whereClause);
       const rows = await query;
       return rows;
     }
 
-    case 'create': {
-      if (!params.data) throw new Error('Create requires data');
-      const result = await db.insert(table as PgTable)
+    case "create": {
+      if (!params.data) throw new Error("Create requires data");
+      const result = await db
+        .insert(table as PgTable)
         .values(params.data)
         .returning();
       return result;
     }
 
-    case 'upsert': {
-      if (!params.data) throw new Error('Upsert requires data');
+    case "upsert": {
+      if (!params.data) throw new Error("Upsert requires data");
       const insertQuery = db.insert(table as PgTable).values(params.data);
       if (params.onConflict && params.onConflict.length > 0) {
         const tableColumns = getTableColumns(table);
         const targetCols = params.onConflict
-          .map(name => tableColumns[name])
+          .map((name) => tableColumns[name])
           .filter(Boolean);
         if (targetCols.length > 0) {
           const result = await insertQuery
@@ -231,15 +274,15 @@ export async function executeQuery(
       return result;
     }
 
-    case 'update': {
-      if (!params.data) throw new Error('Update requires data');
+    case "update": {
+      if (!params.data) throw new Error("Update requires data");
       let query = db.update(table as PgTable).set(params.data);
       if (whereClause) query = query.where(whereClause);
       const result = await query.returning();
       return result;
     }
 
-    case 'delete': {
+    case "delete": {
       let query = db.delete(table as PgTable);
       if (whereClause) query = query.where(whereClause);
       const result = await query.returning();

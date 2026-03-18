@@ -1,9 +1,9 @@
-import { getTableName, type Table } from 'drizzle-orm';
+import { getTableName, type Table } from "drizzle-orm";
 
 /**
  * Relation types supported by the gateway.
  */
-export type RelationType = 'one' | 'many';
+export type RelationType = "one" | "many";
 
 /**
  * A single relation definition between two tables.
@@ -39,7 +39,10 @@ export type TableRelations = Record<string, RelationConfig>;
 /**
  * The full relations registry maps source table names to their resolved relations.
  */
-export type RelationsRegistry = Record<string, Record<string, ResolvedRelation>>;
+export type RelationsRegistry = Record<
+  string,
+  Record<string, ResolvedRelation>
+>;
 
 /**
  * Define relations for a Drizzle table, similar to Drizzle ORM's `relations()` API.
@@ -70,7 +73,7 @@ export function defineRelations(
       sourceTable: sourceTableName,
       relatedTable: getTableName(config.table),
       foreignKey: config.foreignKey,
-      references: config.references ?? 'id',
+      references: config.references ?? "id",
       alias,
     };
   }
@@ -94,7 +97,10 @@ export function defineRelations(
  * ```
  */
 export function createRelationsRegistry(
-  definitions: { tableName: string; relations: Record<string, ResolvedRelation> }[],
+  definitions: {
+    tableName: string;
+    relations: Record<string, ResolvedRelation>;
+  }[],
 ): RelationsRegistry {
   const registry: RelationsRegistry = {};
 

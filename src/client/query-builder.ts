@@ -1,6 +1,6 @@
-import type { GatewayOperation, GatewayResponse } from '../types.js';
-import type { ClientConfig } from './index.js';
-import { GatewayClientError } from './index.js';
+import type { GatewayOperation } from "../types.js";
+import type { ClientConfig } from "./index.js";
+import { GatewayClientError } from "./index.js";
 
 type Row = Record<string, unknown>;
 
@@ -15,20 +15,26 @@ type Row = Record<string, unknown>;
  *     .order('createdAt', { ascending: false })
  *     .limit(50);
  */
-export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | null; error: GatewayClientError | null }> {
+export class QueryBuilder
+  implements
+    PromiseLike<{
+      data: Row[] | Row | number | null;
+      error: GatewayClientError | null;
+    }>
+{
   private _table: string;
-  private _operation: GatewayOperation = 'findMany';
+  private _operation: GatewayOperation = "findMany";
   private _columns: string[] = [];
   private _where: Record<string, unknown> = {};
-  private _orderBy: { column: string; direction: 'asc' | 'desc' }[] = [];
+  private _orderBy: { column: string; direction: "asc" | "desc" }[] = [];
   private _limit?: number;
   private _offset?: number;
   private _data?: Record<string, unknown>;
   private _single = false;
   private _maybeSingle = false;
+  private _head = false;
   private _onConflict?: string[];
   private _config: ClientConfig;
-  private _head = false;
 
   constructor(config: ClientConfig, table: string) {
     this._config = config;
@@ -41,16 +47,22 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
    * Select columns to return. Comma-separated string (e.g. 'id, name, email').
    * If not called, returns all allowed columns.
    */
-  select(columns?: string, options?: { count?: 'exact'; head?: boolean }): this {
-    if (columns && columns !== '*') {
-      this._columns = columns.split(',').map(c => c.trim()).filter(Boolean);
+  select(
+    columns?: string,
+    options?: { count?: "exact"; head?: boolean },
+  ): this {
+    if (columns && columns !== "*") {
+      this._columns = columns
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
     }
     if (options?.head) {
       this._head = true;
-      this._operation = 'count';
+      this._operation = "count";
     }
-    if (options?.count === 'exact') {
-      this._operation = 'count';
+    if (options?.count === "exact") {
+      this._operation = "count";
     }
     return this;
   }
@@ -121,7 +133,8 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
 
   /** Add an order clause: .order('col', { ascending: false }) */
   order(column: string, options?: { ascending?: boolean }): this {
-    const direction = options?.ascending === false ? 'desc' as const : 'asc' as const;
+    const direction =
+      options?.ascending === false ? ("desc" as const) : ("asc" as const);
     this._orderBy.push({ column, direction });
     return this;
   }
@@ -144,18 +157,24 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
   // ─── Result Modifiers ──────────────────────────────────────────
 
   /** Return exactly one row. Errors if zero or more than one. */
-  single(): PromiseLike<{ data: Row | null; error: GatewayClientError | null }> {
+  single(): PromiseLike<{
+    data: Row | null;
+    error: GatewayClientError | null;
+  }> {
     this._single = true;
     this._limit = 1;
-    if (this._operation === 'findMany') this._operation = 'findFirst';
+    if (this._operation === "findMany") this._operation = "findFirst";
     return this as any;
   }
 
   /** Return zero or one row. No error if zero rows. */
-  maybeSingle(): PromiseLike<{ data: Row | null; error: GatewayClientError | null }> {
+  maybeSingle(): PromiseLike<{
+    data: Row | null;
+    error: GatewayClientError | null;
+  }> {
     this._maybeSingle = true;
     this._limit = 1;
-    if (this._operation === 'findMany') this._operation = 'findFirst';
+    if (this._operation === "findMany") this._operation = "findFirst";
     return this as any;
   }
 
@@ -163,31 +182,31 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
 
   /** Insert a new row */
   insert(data: Row | Row[]): this {
-    this._operation = 'create';
+    this._operation = "create";
     this._data = Array.isArray(data) ? data[0] : data;
     return this;
   }
 
   /** Update rows matching the current filters */
   update(data: Row): this {
-    this._operation = 'update';
+    this._operation = "update";
     this._data = data;
     return this;
   }
 
   /** Upsert (insert or update on conflict) */
   upsert(data: Row, options?: { onConflict?: string }): this {
-    this._operation = 'upsert';
+    this._operation = "upsert";
     this._data = data;
     if (options?.onConflict) {
-      this._onConflict = options.onConflict.split(',').map(s => s.trim());
+      this._onConflict = options.onConflict.split(",").map((s) => s.trim());
     }
     return this;
   }
 
   /** Delete rows matching the current filters */
   delete(): this {
-    this._operation = 'delete';
+    this._operation = "delete";
     return this;
   }
 
@@ -208,7 +227,10 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
     return payload;
   }
 
-  private async _execute(): Promise<{ data: Row[] | Row | number | null; error: GatewayClientError | null }> {
+  private async _execute(): Promise<{
+    data: Row[] | Row | number | null;
+    error: GatewayClientError | null;
+  }> {
     const fetchFn = this._config.fetch ?? globalThis.fetch;
     const token = await this._config.getToken();
 
@@ -220,21 +242,24 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
 
     try {
       const response = await fetchFn(this._config.baseUrl, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(body),
       });
 
-      const result = await response.json() as { data: unknown; error: string | null };
+      const result = (await response.json()) as {
+        data: unknown;
+        error: string | null;
+      };
 
       if (!response.ok || result.error) {
         return {
           data: null,
           error: new GatewayClientError(
-            result.error ?? 'Request failed',
+            result.error ?? "Request failed",
             response.status,
           ),
         };
@@ -245,7 +270,7 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
       return {
         data: null,
         error: new GatewayClientError(
-          err instanceof Error ? err.message : 'Network error',
+          err instanceof Error ? err.message : "Network error",
           0,
         ),
       };
@@ -256,8 +281,19 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
    * Makes the builder thenable — you can `await` it directly.
    * Returns `{ data, error }`.
    */
-  then<TResult1 = { data: Row[] | Row | number | null; error: GatewayClientError | null }, TResult2 = never>(
-    onfulfilled?: ((value: { data: Row[] | Row | number | null; error: GatewayClientError | null }) => TResult1 | PromiseLike<TResult1>) | null,
+  then<
+    TResult1 = {
+      data: Row[] | Row | number | null;
+      error: GatewayClientError | null;
+    },
+    TResult2 = never,
+  >(
+    onfulfilled?:
+      | ((value: {
+          data: Row[] | Row | number | null;
+          error: GatewayClientError | null;
+        }) => TResult1 | PromiseLike<TResult1>)
+      | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     return this._execute().then(onfulfilled, onrejected);

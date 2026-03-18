@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "publishConfig": {
     "access": "public",
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "files": [
     "dist",
@@ -20,6 +20,9 @@
   },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "tsx src/example/server.ts",
@@ -42,6 +45,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.8",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/supertest": "^7.2.0",

@@ -1,9 +1,13 @@
-import { Router, type Request, type Response } from 'express';
-import { z } from 'zod';
-import type { PolicyRegistry, GatewayContext, IncludeOption } from '../types.js';
-import { validateShape, intersectColumns, projectColumns } from './policy.js';
-import { executeQuery, type DrizzleDB } from './executor.js';
-import type { RelationsRegistry } from './relations.js';
+import { type Request, type Response, Router } from "express";
+import { z } from "zod";
+import type {
+  GatewayContext,
+  IncludeOption,
+  PolicyRegistry,
+} from "../types.js";
+import { type DrizzleDB, executeQuery } from "./executor.js";
+import { intersectColumns, projectColumns, validateShape } from "./policy.js";
+import type { RelationsRegistry } from "./relations.js";
 
 /** Maximum depth for nested includes to prevent unbounded recursion */
 const MAX_INCLUDE_DEPTH = 3;
@@ -13,7 +17,7 @@ const MAX_INCLUDE_ALIASES = 5;
 
 const orderBySchema = z.object({
   column: z.string(),
-  direction: z.enum(['asc', 'desc']),
+  direction: z.enum(["asc", "desc"]),
 });
 
 const includeOptionSchema: z.ZodType<Record<string, unknown>> = z.lazy(() =>
@@ -38,11 +42,13 @@ const payloadSchema = z.object({
   offset: z.number().int().nonnegative().optional(),
   orderBy: z.array(orderBySchema).optional(),
   data: z.record(z.unknown()).optional(),
-  cursor: z.object({
-    column: z.string(),
-    value: z.unknown(),
-    direction: z.enum(['asc', 'desc']).optional(),
-  }).optional(),
+  cursor: z
+    .object({
+      column: z.string(),
+      value: z.unknown(),
+      direction: z.enum(["asc", "desc"]).optional(),
+    })
+    .optional(),
   onConflict: z.array(z.string()).optional(),
   single: z.boolean().optional(),
   include: includeOptionSchema.optional(),
@@ -50,7 +56,15 @@ const payloadSchema = z.object({
 
 const gatewayRequestSchema = z.object({
   table: z.string().min(1),
-  operation: z.enum(['findMany', 'findFirst', 'create', 'update', 'delete', 'count', 'upsert']),
+  operation: z.enum([
+    "findMany",
+    "findFirst",
+    "create",
+    "update",
+    "delete",
+    "count",
+    "upsert",
+  ]),
   payload: payloadSchema,
 });
 
@@ -100,58 +114,107 @@ async function loadRelations(
     if (!relatedPolicy) continue;
 
     const includeOpt = include[alias];
-    const opts: IncludeOption = typeof includeOpt === 'boolean' ? {} : includeOpt;
+    const opts: IncludeOption =
+      typeof includeOpt === "boolean" ? {} : includeOpt;
 
     // Enforce required filters on related table (e.g. tenant isolation)
     const requiredFilters = relatedPolicy.requiredFilters(ctx);
 
-    for (const row of rows) {
-      const linkValue = relation.type === 'one'
-        ? row[relation.foreignKey]
-        : row[relation.references];
+    const sourceKey =
+      relation.type === "one" ? relation.foreignKey : relation.references;
 
-      if (linkValue === undefined || linkValue === null) {
-        row[alias] = relation.type === 'one' ? null : [];
+    const lookupColumn =
+      relation.type === "one" ? relation.references : relation.foreignKey;
+
+    // Collect all non-null link values across rows
+    const linkValues: unknown[] = [];
+    for (const row of rows) {
+      const v = row[sourceKey];
+      if (v !== undefined && v !== null) linkValues.push(v);
+    }
+
+    // If no rows have a link value, fill defaults and skip
+    if (linkValues.length === 0) {
+      for (const row of rows) {
+        row[alias] = relation.type === "one" ? null : [];
+      }
+      continue;
+    }
+
+    const uniqueValues = [...new Set(linkValues)];
+
+    const columns = intersectColumns(
+      opts.columns,
+      relatedPolicy.allowedColumns,
+    );
+    // Ensure the lookup column is included so we can distribute results
+    const columnsWithLookup = columns.includes(lookupColumn)
+      ? columns
+      : [...columns, lookupColumn];
+
+    const where = {
+      ...opts.where,
+      ...requiredFilters,
+      [lookupColumn]: { in: uniqueValues },
+    };
+
+    const rawResult = await executeQuery(db, relatedPolicy, "findMany", {
+      where,
+      columns: columnsWithLookup,
+      orderBy: opts.orderBy,
+    });
+
+    const projected = projectColumns(rawResult as Record<string, unknown>[], [
+      ...relatedPolicy.allowedColumns,
+      lookupColumn,
+    ]);
+
+    // Index results by lookup column for O(1) distribution
+    const resultMap = new Map<unknown, Record<string, unknown>[]>();
+    for (const record of projected) {
+      const key = record[lookupColumn];
+      let bucket = resultMap.get(key);
+      if (!bucket) {
+        bucket = [];
+        resultMap.set(key, bucket);
+      }
+      bucket.push(record);
+    }
+
+    // Recurse into nested includes on the full batch
+    const nestedInclude =
+      typeof includeOpt !== "boolean" && includeOpt
+        ? ((includeOpt as Record<string, unknown>).include as
+            | Record<string, IncludeOption | boolean>
+            | undefined)
+        : undefined;
+    if (nestedInclude && projected.length > 0) {
+      await loadRelations(
+        db,
+        policies,
+        relations,
+        ctx,
+        relation.relatedTable,
+        projected,
+        nestedInclude,
+        depth + 1,
+        maxDepth,
+      );
+    }
+
+    // Distribute results back to each row
+    for (const row of rows) {
+      const v = row[sourceKey];
+      if (v === undefined || v === null) {
+        row[alias] = relation.type === "one" ? null : [];
         continue;
       }
-
-      const lookupColumn = relation.type === 'one'
-        ? relation.references
-        : relation.foreignKey;
-
-      const where = {
-        ...opts.where,
-        ...requiredFilters,
-        [lookupColumn]: linkValue,
-      };
-
-      const columns = intersectColumns(opts.columns, relatedPolicy.allowedColumns);
-
-      const rawResult = await executeQuery(db, relatedPolicy, 'findMany', {
-        where,
-        columns,
-        limit: relation.type === 'one' ? 1 : opts.limit,
-        orderBy: opts.orderBy,
-      });
-
-      const projected = projectColumns(
-        rawResult as Record<string, unknown>[],
-        relatedPolicy.allowedColumns,
-      );
-
-      // Recurse into nested includes
-      const nestedInclude = typeof includeOpt !== 'boolean' && includeOpt
-        ? (includeOpt as Record<string, unknown>).include as Record<string, IncludeOption | boolean> | undefined
-        : undefined;
-      if (nestedInclude && projected.length > 0) {
-        await loadRelations(
-          db, policies, relations, ctx,
-          relation.relatedTable, projected,
-          nestedInclude, depth + 1, maxDepth,
-        );
+      const matches = resultMap.get(v) ?? [];
+      if (relation.type === "one") {
+        row[alias] = matches[0] ?? null;
+      } else {
+        row[alias] = opts.limit ? matches.slice(0, opts.limit) : matches;
       }
-
-      row[alias] = relation.type === 'one' ? (projected[0] ?? null) : projected;
     }
   }
 }
@@ -171,7 +234,7 @@ async function processQuery(
 
   const policy = policies[table];
   if (!policy) {
-    return { status: 403, body: { data: null, error: 'Table not exposed' } };
+    return { status: 403, body: { data: null, error: "Table not exposed" } };
   }
 
   const violation = validateShape(payload, policy, operation, ctx);
@@ -181,22 +244,47 @@ async function processQuery(
 
   // Security: validate orderBy columns against allowedColumns
   if (payload.orderBy) {
-    const disallowed = payload.orderBy.map(o => o.column).filter(c => !policy.allowedColumns.includes(c));
+    const disallowed = payload.orderBy
+      .map((o) => o.column)
+      .filter((c) => !policy.allowedColumns.includes(c));
     if (disallowed.length > 0) {
-      return { status: 403, body: { data: null, error: 'Disallowed orderBy columns: ' + disallowed.join(', ') } };
+      return {
+        status: 403,
+        body: {
+          data: null,
+          error: `Disallowed orderBy columns: ${disallowed.join(", ")}`,
+        },
+      };
     }
   }
 
   // Security: validate cursor column against allowedColumns
-  if (payload.cursor && !policy.allowedColumns.includes(payload.cursor.column)) {
-    return { status: 403, body: { data: null, error: 'Disallowed cursor column: ' + payload.cursor.column } };
+  if (
+    payload.cursor &&
+    !policy.allowedColumns.includes(payload.cursor.column)
+  ) {
+    return {
+      status: 403,
+      body: {
+        data: null,
+        error: `Disallowed cursor column: ${payload.cursor.column}`,
+      },
+    };
   }
 
   // Security: validate onConflict columns against allowedColumns
   if (payload.onConflict) {
-    const disallowed = payload.onConflict.filter(c => !policy.allowedColumns.includes(c));
+    const disallowed = payload.onConflict.filter(
+      (c) => !policy.allowedColumns.includes(c),
+    );
     if (disallowed.length > 0) {
-      return { status: 403, body: { data: null, error: 'Disallowed onConflict columns: ' + disallowed.join(', ') } };
+      return {
+        status: 403,
+        body: {
+          data: null,
+          error: `Disallowed onConflict columns: ${disallowed.join(", ")}`,
+        },
+      };
     }
   }
 
@@ -208,7 +296,8 @@ async function processQuery(
 
   const columns = intersectColumns(payload.columns, policy.allowedColumns);
 
-  const isWrite = operation === 'create' || operation === 'update' || operation === 'upsert';
+  const isWrite =
+    operation === "create" || operation === "update" || operation === "upsert";
 
   // Security: inject requiredFilters into write data for tenant isolation
   let writeData = payload.data;
@@ -217,8 +306,14 @@ async function processQuery(
   }
 
   // Security: reject update/delete with no effective WHERE clause
-  if ((operation === 'update' || operation === 'delete') && Object.keys(mergedFilters).length === 0) {
-    return { status: 403, body: { data: null, error: 'Update/delete requires at least one filter' } };
+  if (
+    (operation === "update" || operation === "delete") &&
+    Object.keys(mergedFilters).length === 0
+  ) {
+    return {
+      status: 403,
+      body: { data: null, error: "Update/delete requires at least one filter" },
+    };
   }
 
   const rawResult = await executeQuery(db, policy, operation, {
@@ -228,12 +323,14 @@ async function processQuery(
     offset: payload.offset,
     orderBy: payload.orderBy,
     data: writeData,
-    cursor: payload.cursor as { column: string; value: unknown; direction?: 'asc' | 'desc' } | undefined,
+    cursor: payload.cursor as
+      | { column: string; value: unknown; direction?: "asc" | "desc" }
+      | undefined,
     onConflict: payload.onConflict,
     single: payload.single,
   });
 
-  if (operation === 'count') {
+  if (operation === "count") {
     return { status: 200, body: { data: rawResult, error: null } };
   }
 
@@ -245,9 +342,15 @@ async function processQuery(
   // Load related data if include is specified and relations are configured
   if (payload.include && relations) {
     await loadRelations(
-      db, policies, relations, ctx, table, result,
+      db,
+      policies,
+      relations,
+      ctx,
+      table,
+      result,
       payload.include as Record<string, IncludeOption | boolean>,
-      0, maxIncludeDepth,
+      0,
+      maxIncludeDepth,
     );
   }
 
@@ -269,15 +372,22 @@ async function processQuery(
  */
 export function createGatewayHandler(config: GatewayHandlerConfig): Router {
   const router = Router();
-  const { db, policies, onError, maxBatchSize = 10, relations, maxIncludeDepth } = config;
+  const {
+    db,
+    policies,
+    onError,
+    maxBatchSize = 10,
+    relations,
+    maxIncludeDepth,
+  } = config;
 
   // Single query endpoint
-  router.post('/', async (req: Request, res: Response): Promise<void> => {
+  router.post("/", async (req: Request, res: Response): Promise<void> => {
     const parsed = gatewayRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
         data: null,
-        error: 'Invalid request format',
+        error: "Invalid request format",
         details: parsed.error.issues,
       });
       return;
@@ -285,26 +395,35 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
 
     const ctx = req.ctx as GatewayContext;
     if (!ctx) {
-      res.status(401).json({ data: null, error: 'Missing authentication context' });
+      res
+        .status(401)
+        .json({ data: null, error: "Missing authentication context" });
       return;
     }
 
     try {
-      const result = await processQuery(db, policies, parsed.data, ctx, relations, maxIncludeDepth);
+      const result = await processQuery(
+        db,
+        policies,
+        parsed.data,
+        ctx,
+        relations,
+        maxIncludeDepth,
+      );
       res.status(result.status).json(result.body);
     } catch (err) {
       onError?.(err, req);
-      res.status(500).json({ data: null, error: 'Query execution failed' });
+      res.status(500).json({ data: null, error: "Query execution failed" });
     }
   });
 
   // Batch query endpoint
-  router.post('/batch', async (req: Request, res: Response): Promise<void> => {
+  router.post("/batch", async (req: Request, res: Response): Promise<void> => {
     const parsed = batchRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
         data: null,
-        error: 'Invalid batch request format',
+        error: "Invalid batch request format",
         details: parsed.error.issues,
       });
       return;
@@ -313,31 +432,35 @@ export function createGatewayHandler(config: GatewayHandlerConfig): Router {
     if (parsed.data.queries.length > maxBatchSize) {
       res.status(400).json({
         data: null,
-        error: 'Batch size exceeds maximum of ' + maxBatchSize,
+        error: `Batch size exceeds maximum of ${maxBatchSize}`,
       });
       return;
     }
 
     const ctx = req.ctx as GatewayContext;
     if (!ctx) {
-      res.status(401).json({ data: null, error: 'Missing authentication context' });
+      res
+        .status(401)
+        .json({ data: null, error: "Missing authentication context" });
       return;
     }
 
     try {
       const results = await Promise.allSettled(
-        parsed.data.queries.map(query => processQuery(db, policies, query, ctx, relations, maxIncludeDepth)),
+        parsed.data.queries.map((query) =>
+          processQuery(db, policies, query, ctx, relations, maxIncludeDepth),
+        ),
       );
       res.json({
-        results: results.map(r =>
-          r.status === 'fulfilled'
+        results: results.map((r) =>
+          r.status === "fulfilled"
             ? r.value.body
-            : { data: null, error: 'Query execution failed' },
+            : { data: null, error: "Query execution failed" },
         ),
       });
     } catch (err) {
       onError?.(err, req);
-      res.status(500).json({ data: null, error: 'Batch execution failed' });
+      res.status(500).json({ data: null, error: "Batch execution failed" });
     }
   });
 

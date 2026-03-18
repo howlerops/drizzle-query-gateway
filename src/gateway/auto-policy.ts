@@ -1,5 +1,5 @@
-import { getTableName, getTableColumns, type Table } from 'drizzle-orm';
-import type { Policy, GatewayContext } from '../types.js';
+import { getTableColumns, getTableName, type Table } from "drizzle-orm";
+import type { GatewayContext, Policy } from "../types.js";
 
 /**
  * Override options for auto-generated policies.
@@ -48,7 +48,7 @@ export function definePolicyFromSchema<T extends Table>(
     allowedColumns = overrides.allowedColumns;
   } else if (overrides.excludeColumns) {
     const excluded = new Set(overrides.excludeColumns);
-    allowedColumns = columns.filter(c => !excluded.has(c));
+    allowedColumns = columns.filter((c) => !excluded.has(c));
   } else {
     allowedColumns = columns;
   }
@@ -58,7 +58,7 @@ export function definePolicyFromSchema<T extends Table>(
     allowedFilters = overrides.allowedFilters;
   } else if (overrides.excludeFilters) {
     const excluded = new Set(overrides.excludeFilters);
-    allowedFilters = columns.filter(c => !excluded.has(c));
+    allowedFilters = columns.filter((c) => !excluded.has(c));
   } else {
     allowedFilters = columns;
   }
@@ -74,7 +74,7 @@ export function definePolicyFromSchema<T extends Table>(
 }
 
 function isTable(value: unknown): value is Table {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== "object") return false;
   try {
     getTableName(value as Table);
     return true;

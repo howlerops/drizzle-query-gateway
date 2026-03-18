@@ -11,21 +11,22 @@
  * In a real app, replace the Drizzle DB connection with your actual database.
  */
 
-import express from 'express';
-import { createAuthMiddleware } from '../gateway/middleware.js';
-import { createGatewayHandler } from '../gateway/handler.js';
-import { createPolicyRegistry } from '../gateway/policy.js';
-import { allPolicies } from './policies.js';
+import express from "express";
+import { createGatewayHandler } from "../gateway/handler.js";
+import { createAuthMiddleware } from "../gateway/middleware.js";
+import { createPolicyRegistry } from "../gateway/policy.js";
+import { allPolicies } from "./policies.js";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? 'development-secret-change-in-production';
-const PORT = parseInt(process.env.PORT ?? '3000', 10);
+const JWT_SECRET =
+  process.env.JWT_SECRET ?? "development-secret-change-in-production";
+const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
 const app = express();
 app.use(express.json());
 
 // Health check
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
 });
 
 // Auth middleware — verifies JWT and builds GatewayContext
@@ -46,11 +47,13 @@ const gateway = createGatewayHandler({
 });
 
 // Mount: auth middleware protects the gateway
-app.use('/api/gateway', auth, gateway);
+app.use("/api/gateway", auth, gateway);
 
 app.listen(PORT, () => {
   console.log(`Drizzle Query Gateway listening on http://localhost:${PORT}`);
   console.log(`Gateway endpoint: POST http://localhost:${PORT}/api/gateway`);
-  console.log(`Batch endpoint:   POST http://localhost:${PORT}/api/gateway/batch`);
-  console.log(`\nExposed tables: ${Object.keys(policies).join(', ')}`);
+  console.log(
+    `Batch endpoint:   POST http://localhost:${PORT}/api/gateway/batch`,
+  );
+  console.log(`\nExposed tables: ${Object.keys(policies).join(", ")}`);
 });

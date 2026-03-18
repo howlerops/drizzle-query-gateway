@@ -1,5 +1,5 @@
-import { definePolicy } from '../gateway/policy.js';
-import { contacts, accounts } from '../schema/index.js';
+import { definePolicy } from "../gateway/policy.js";
+import { accounts, contacts } from "../schema/index.js";
 
 /**
  * Example policy definitions demonstrating multi-tenant access control.
@@ -14,17 +14,18 @@ import { contacts, accounts } from '../schema/index.js';
 export const contactsPolicy = definePolicy({
   table: contacts,
   requiredFilters: (ctx) => ({ tenantId: ctx.tenantId }),
-  allowedFilters: ['status', 'ownerId', 'createdAt'],
-  allowedColumns: ['id', 'name', 'email', 'status', 'ownerId', 'createdAt'],
-  canWrite: (ctx) => ctx.roles.includes('editor') || ctx.roles.includes('admin'),
+  allowedFilters: ["status", "ownerId", "createdAt"],
+  allowedColumns: ["id", "name", "email", "status", "ownerId", "createdAt"],
+  canWrite: (ctx) =>
+    ctx.roles.includes("editor") || ctx.roles.includes("admin"),
 });
 
 export const accountsPolicy = definePolicy({
   table: accounts,
   requiredFilters: (ctx) => ({ tenantId: ctx.tenantId }),
-  allowedFilters: ['isActive', 'industry'],
-  allowedColumns: ['id', 'name', 'industry', 'isActive', 'website'],
-  canWrite: (ctx) => ctx.roles.includes('admin'),
+  allowedFilters: ["isActive", "industry"],
+  allowedColumns: ["id", "name", "industry", "isActive", "website"],
+  canWrite: (ctx) => ctx.roles.includes("admin"),
 });
 
 export const allPolicies = [contactsPolicy, accountsPolicy];

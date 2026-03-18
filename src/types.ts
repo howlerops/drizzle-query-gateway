@@ -1,4 +1,4 @@
-import type { Table, InferSelectModel } from 'drizzle-orm';
+import type { Table } from "drizzle-orm";
 
 /** User context built by auth middleware — never from the client */
 export interface GatewayContext {
@@ -8,7 +8,17 @@ export interface GatewayContext {
 }
 
 /** Supported filter operators */
-export type FilterOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'like' | 'ilike' | 'is';
+export type FilterOperator =
+  | "eq"
+  | "neq"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "in"
+  | "like"
+  | "ilike"
+  | "is";
 
 /** A filter value can be a plain value (shorthand for eq) or an operator object */
 export type FilterValue =
@@ -25,7 +35,14 @@ export type FilterValue =
   | { is: null };
 
 /** Operations the gateway supports */
-export type GatewayOperation = 'findMany' | 'findFirst' | 'create' | 'update' | 'delete' | 'count' | 'upsert';
+export type GatewayOperation =
+  | "findMany"
+  | "findFirst"
+  | "create"
+  | "update"
+  | "delete"
+  | "count"
+  | "upsert";
 
 /** Inbound request shape from the client */
 export interface GatewayRequest {
@@ -36,9 +53,9 @@ export interface GatewayRequest {
     columns?: string[];
     limit?: number;
     offset?: number;
-    orderBy?: { column: string; direction: 'asc' | 'desc' }[];
+    orderBy?: { column: string; direction: "asc" | "desc" }[];
     data?: Record<string, unknown>;
-    cursor?: { column: string; value: unknown; direction?: 'asc' | 'desc' };
+    cursor?: { column: string; value: unknown; direction?: "asc" | "desc" };
     /** For upsert: columns that determine conflict */
     onConflict?: string[];
     /** Return single row instead of array */
@@ -106,5 +123,5 @@ export interface IncludeOption {
   columns?: string[];
   where?: Record<string, FilterValue>;
   limit?: number;
-  orderBy?: { column: string; direction: 'asc' | 'desc' }[];
+  orderBy?: { column: string; direction: "asc" | "desc" }[];
 }
