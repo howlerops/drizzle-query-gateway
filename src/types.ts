@@ -7,7 +7,7 @@ export interface GatewayContext {
   roles: string[];
 }
 
-/** Supported filter operators (Supabase-compatible) */
+/** Supported filter operators */
 export type FilterOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'like' | 'ilike' | 'is';
 
 /** A filter value can be a plain value (shorthand for eq) or an operator object */
@@ -43,6 +43,8 @@ export interface GatewayRequest {
     onConflict?: string[];
     /** Return single row instead of array */
     single?: boolean;
+    /** Include related data */
+    include?: Record<string, IncludeOption | boolean>;
   };
 }
 
@@ -97,4 +99,12 @@ declare global {
       ctx?: GatewayContext;
     }
   }
+}
+
+/** Options for including related data in queries */
+export interface IncludeOption {
+  columns?: string[];
+  where?: Record<string, FilterValue>;
+  limit?: number;
+  orderBy?: { column: string; direction: 'asc' | 'desc' }[];
 }

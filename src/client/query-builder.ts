@@ -5,7 +5,7 @@ import { GatewayClientError } from './index.js';
 type Row = Record<string, unknown>;
 
 /**
- * Supabase-style chainable query builder.
+ * Chainable query builder for the Drizzle Query Gateway.
  *
  * Usage:
  *   const { data, error } = await gateway
@@ -38,7 +38,7 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
   // ─── Column Selection ──────────────────────────────────────────
 
   /**
-   * Select columns to return. Comma-separated string like Supabase.
+   * Select columns to return. Comma-separated string (e.g. 'id, name, email').
    * If not called, returns all allowed columns.
    */
   select(columns?: string, options?: { count?: 'exact'; head?: boolean }): this {
@@ -119,7 +119,7 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
 
   // ─── Ordering ──────────────────────────────────────────────────
 
-  /** Add an order clause. Matches Supabase: .order('col', { ascending: false }) */
+  /** Add an order clause: .order('col', { ascending: false }) */
   order(column: string, options?: { ascending?: boolean }): this {
     const direction = options?.ascending === false ? 'desc' as const : 'asc' as const;
     this._orderBy.push({ column, direction });
@@ -254,7 +254,7 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
 
   /**
    * Makes the builder thenable — you can `await` it directly.
-   * Returns `{ data, error }` like Supabase.
+   * Returns `{ data, error }`.
    */
   then<TResult1 = { data: Row[] | Row | number | null; error: GatewayClientError | null }, TResult2 = never>(
     onfulfilled?: ((value: { data: Row[] | Row | number | null; error: GatewayClientError | null }) => TResult1 | PromiseLike<TResult1>) | null,
@@ -265,12 +265,11 @@ export class QueryBuilder implements PromiseLike<{ data: Row[] | Row | number | 
 }
 
 /**
- * Create a Supabase-style gateway client with chainable query builder.
+ * Create a gateway client with chainable query builder.
  *
  * Usage:
  *   const gateway = createQueryBuilder(config);
  *
- *   // Supabase-like:
  *   const { data, error } = await gateway.from('contacts')
  *     .select('id, name, email')
  *     .eq('status', 'active')
